@@ -1,4 +1,3 @@
-
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -11,16 +10,14 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
-
+import { Input } from "../ui/input";
 import { Button } from "../ui/button";
-import { FileInput, ImageIcon, MessageSquareDiff } from "lucide-react";
-
+import { ImageIcon, MessageSquareDiff } from "lucide-react";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import toast from "react-hot-toast";
-import { Input } from "../ui/input";
-
+import { useConversationStore } from "@/store/chat-store";
 
 const UserListDialog = () => {
     const [selectedUsers, setSelectedUsers] = useState<Id<"users">[]>([]);
@@ -32,24 +29,16 @@ const UserListDialog = () => {
     const imgRef = useRef<HTMLInputElement>(null);
     const dialogCloseRef = useRef<HTMLButtonElement>(null);
 
-    useEffect(() => {
-        if (!selectedImage) return setRenderedImage("");
-        const reader = new FileReader();
-        reader.onload = (e) => setRenderedImage(e.target?.result as string);
-        reader.readAsDataURL(selectedImage);
-    }, [selectedImage]);
-    
     const createConversation = useMutation(api.conversations.createConversation);
     const generateUploadUrl = useMutation(api.conversations.generateUploadUrl);
-    const me = useQuery(api.users.getMe)
-    const users = useQuery(api.users.getUsers)
+    const me = useQuery(api.users.getMe);
+    const users = useQuery(api.users.getUsers);
 
+    const { setSelectedConversation } = useConversationStore();
 
     const handleCreateConversation = async () => {
-
         if (selectedUsers.length === 0) return;
-        setIsLoading(true)
-
+        setIsLoading(true);
         try {
             const isGroup = selectedUsers.length > 1;
 
@@ -57,10 +46,9 @@ const UserListDialog = () => {
             if (!isGroup) {
                 conversationId = await createConversation({
                     participants: [...selectedUsers, me?._id!],
-                    isGroup: false
-                })
+                    isGroup: false,
+                });
             } else {
-
                 const postUrl = await generateUploadUrl();
 
                 const result = await fetch(postUrl, {
@@ -78,21 +66,38 @@ const UserListDialog = () => {
                     groupName,
                     groupImage: storageId,
                 });
-                
             }
-            dialogCloseRef.current?.click()
-            setSelectedUsers([])
-            setGroupName('')
-            setSelectedImage(null)
+
+            dialogCloseRef.current?.click();
+            setSelectedUsers([]);
+            setGroupName("");
+            setSelectedImage(null);
+
+            // TODO => Update a global state called "selectedConversation"
+            const conversationName = isGroup ? groupName : users?.find((user) => user._id === selectedUsers[0])?.name;
+
+            setSelectedConversation({
+                _id: conversationId,
+                participants: selectedUsers,
+                isGroup,
+                image: isGroup ? renderedImage : users?.find((user) => user._id === selectedUsers[0])?.image,
+                name: conversationName,
+                admin: me?._id!,
+            });
         } catch (err) {
-           toast.error('Fail')
-           console.error(err)
-        } finally { setIsLoading(false) }
-    }
+            toast.error("Failed to create conversation");
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
-    
-
-
+    useEffect(() => {
+        if (!selectedImage) return setRenderedImage("");
+        const reader = new FileReader();
+        reader.onload = (e) => setRenderedImage(e.target?.result as string);
+        reader.readAsDataURL(selectedImage);
+    }, [selectedImage]);
 
     return (
         <Dialog>
